@@ -1,0 +1,37 @@
+import { it, expect, vi } from 'vitest';
+import { createSlotMachineStore } from '../../src/state/slotMachineStore';
+const indexes = { domain: 2, approach: 7, niche: 4 };
+it('requests immediately, keeps reels spinning until the response, then settles once', async () => {
+  let resolve!: (value: { idea: string; researchStatus: 'checked' }) => void;
+  const generate = vi.fn(() => new Promise<{ idea: string; researchStatus: 'checked' }>(r => { resolve = r; }));
+  const store = createSlotMachineStore(generate, () => indexes, () => indexes);
+  store.getState().spin(); store.getState().spin();
+  expect(generate).toHaveBeenCalledTimes(1);
+  expect(generate).toHaveBeenCalledWith({ domain: 'Finance', approach: 'Augmented Reality', niche: 'Senior Citizens' });
+  for (const name of ['domain', 'approach', 'niche'] as const) store.getState().reelStopped(name, indexes[name], 1);
+  expect(store.getState()).toMatchObject({ status: 'spinning', stoppedReels: [], idea: null, spinId: 1 });
+  resolve({ idea: 'A practical project.', researchStatus: 'checked' });
+  await Promise.resolve();
+  expect(store.getState().status).toBe('settling');
+  store.getState().spin();
+  store.getState().reelStopped('domain', 2, 0);
+  store.getState().reelStopped('domain', 9, 1);
+  expect(store.getState().stoppedReels).toHaveLength(0);
+  store.getState().reelStopped('domain', 2, 1); store.getState().reelStopped('domain', 2, 1);
+  store.getState().reelStopped('approach', 7, 1);
+  expect(store.getState().status).toBe('settling');
+  store.getState().reelStopped('niche', 4, 1);
+  expect(store.getState()).toMatchObject({ status: 'success', idea: 'A practical project.', stoppedReels: ['domain', 'approach', 'niche'] });
+  expect(generate).toHaveBeenCalledTimes(1);
+});
+it('retry retains the stopped combination without spinning', async () => {
+  const generate = vi.fn().mockRejectedValueOnce(new Error('Try again.')).mockResolvedValueOnce({ idea: 'Recovered.', researchStatus: 'unavailable' as const });
+  const store = createSlotMachineStore(generate, () => indexes, () => indexes);
+  store.getState().spin();
+  await Promise.resolve();
+  for (const name of ['domain', 'approach', 'niche'] as const) store.getState().reelStopped(name, indexes[name], 1);
+  expect(store.getState().status).toBe('error');
+  await store.getState().retry();
+  expect(store.getState()).toMatchObject({ status: 'success', spinId: 1, reelIndexes: indexes, error: null });
+  expect(generate.mock.calls[0]).toEqual(generate.mock.calls[1]);
+});

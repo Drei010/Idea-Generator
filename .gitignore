@@ -1,0 +1,11 @@
+node_modules/
+.expo/
+dist/
+.env.local
+.env.*.local
+test-results/
+test-screenshots/
+playwright-report/
+coverage/
+.playwright-cli/
+.DS_Store

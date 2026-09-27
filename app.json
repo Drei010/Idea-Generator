@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "Lucky Idea",
+    "slug": "idea-generator",
+    "scheme": "luckyidea",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "dark",
+    "plugins": [
+      "expo-router",
+      ["expo-audio", { "microphonePermission": false, "recordAudioAndroid": false, "enableBackgroundPlayback": false }]
+    ],
+    "web": {
+      "bundler": "metro",
+      "output": "server",
+      "name": "Lucky Idea"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.luckyidea.app"
+    },
+    "android": {
+      "package": "com.luckyidea.app"
+    }
+  }
+}
