@@ -23,7 +23,46 @@ test('initial cabinet and idle state', async ({ page }, info) => {
   for (const name of ['domain', 'approach', 'niche']) await expect(page.getByTestId(`${name}-reel`)).not.toBeEmpty();
   await screenshot(page, 'initial', info.project.name);
 });
-test('tap/keyboard spin maps rendered reel indexes to the API and locks input', async ({ page }, info) => {
+test('casino cabinet matches the receipt width and renders three colored medallions', async ({ page }, info) => {
+  if (info.project.name === 'chromium') await page.setViewportSize({ width: 638, height: 1600 });
+  await ready(page);
+  const receipt = (await page.getByTestId('idea-receipt').boundingBox())!;
+  const canvas = page.locator('canvas');
+  const rendered = await canvas.evaluate(source => {
+    const canvas = source as HTMLCanvasElement;
+    const sample = document.createElement('canvas');
+    sample.width = canvas.width; sample.height = canvas.height;
+    const context = sample.getContext('2d')!;
+    context.drawImage(canvas, 0, 0);
+    const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+    let left = sample.width, right = 0;
+    const colors = [0, 0, 0];
+    for (let y = 0; y < sample.height; y++) for (let x = 0; x < sample.width; x++) {
+      const offset = (y * sample.width + x) * 4;
+      if (pixels[offset + 3] < 128) continue;
+      // The cabinet plinth defines its visual width; the lever sits outside it.
+      if (y > sample.height * .88 && y < sample.height * .97) {
+        left = Math.min(left, x); right = Math.max(right, x);
+      }
+      const r = pixels[offset], g = pixels[offset + 1], b = pixels[offset + 2];
+      // Check the reel area, excluding the red cabinet and gold header.
+      if (y > sample.height * .39 && y < sample.height * .56) {
+        if (r > 90 && r > g * 1.5 && r > b * 1.5) colors[0]++;
+        if (b > 75 && b > r * 1.4 && b > g * 1.1) colors[1]++;
+        if (g > 55 && g > r * 1.25 && g > b * 1.15) colors[2]++;
+      }
+    }
+    return { width: (right - left) * canvas.clientWidth / canvas.width, center: canvas.getBoundingClientRect().x + (right + left) / 2 * canvas.clientWidth / canvas.width, colors };
+  });
+  expect(rendered.width / receipt.width).toBeGreaterThan(.90);
+  expect(rendered.width / receipt.width).toBeLessThan(1.1);
+  if (page.viewportSize()!.width < 900) expect(Math.abs(rendered.center - receipt.x - receipt.width / 2)).toBeLessThan(4);
+  const controls = (await page.getByTestId('machine-controls').boundingBox())!;
+  expect(controls.y).toBeGreaterThan(receipt.y + receipt.height);
+  for (const color of rendered.colors) expect(color).toBeGreaterThan(40);
+  await screenshot(page, 'casino-reels', info.project.name);
+});
+test('lever stays playful during a spin without starting another request', async ({ page }, info) => {
   const requests: unknown[] = [];
   let release!: () => void;
   const pending = new Promise<void>(resolve => { release = resolve; });
@@ -33,7 +72,34 @@ test('tap/keyboard spin maps rendered reel indexes to the API and locks input', 
   else { await page.getByTestId('lever').focus(); await page.keyboard.press('Enter'); }
   await expect(page.getByTestId('machine-state')).toHaveText('spinning');
   await expect.poll(() => requests.length).toBe(1);
-  await expect(page.getByTestId('lever')).toBeDisabled();
+  const lever = page.getByTestId('lever');
+  await expect(lever).toBeEnabled();
+  await expect(page.getByTestId('spin-button')).toBeDisabled();
+  await lever.scrollIntoViewIfNeeded();
+  const box = (await lever.boundingBox())!;
+  const x = box.x + box.width / 2, y = box.y + 20;
+  const leverPixels = () => page.locator('canvas').evaluate(source => {
+    const canvas = source as HTMLCanvasElement;
+    const sample = document.createElement('canvas'); sample.width = 80; sample.height = 160;
+    const context = sample.getContext('2d')!;
+    context.drawImage(canvas, canvas.width * .8, canvas.height * .25, canvas.width * .2, canvas.height * .65, 0, 0, 80, 160);
+    return sample.toDataURL();
+  });
+  await page.waitForTimeout(1800); // Let the initial spring return settle before comparing pixels.
+  const resting = await leverPixels();
+  for (const distance of [40, 100, 75]) {
+    await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x, y + distance, { steps: 5 });
+    await expect(lever).toHaveAttribute('data-phase', 'dragging');
+    await page.waitForTimeout(400); // Holding a full pull must not trigger the spring-back timer.
+    expect(await leverPixels()).not.toBe(resting);
+    await page.mouse.up();
+    await expect(lever).toHaveAttribute('data-phase', 'idle');
+    await expect.poll(leverPixels).toBe(resting);
+  }
+  await lever.focus(); await page.keyboard.press('Enter');
+  await expect.poll(leverPixels).toBe(resting);
+  await expect(page.getByTestId('spin-id')).toHaveText('1');
+  expect(requests).toEqual([selection]);
   await page.getByTestId('spin-button').dispatchEvent('click');
   // Hold the server beyond the old animation duration and verify real reel motion.
   await page.waitForTimeout(3300);
@@ -64,10 +130,36 @@ test('tap/keyboard spin maps rendered reel indexes to the API and locks input', 
   await expect(page.getByTestId('lever')).toBeEnabled();
   await screenshot(page, 'stopped', info.project.name);
 });
+test('compact controls retain full touch targets in idle, loading and success states', async ({ page }, info) => {
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await page.route('**/api/idea', async route => { await pending; await route.fulfill({ json: researched }); });
+  await ready(page);
+  const controls = page.getByTestId('machine-controls');
+  const checkSize = async (state: string) => {
+    await controls.scrollIntoViewIfNeeded();
+    expect((await controls.boundingBox())!.height).toBeLessThanOrEqual(90);
+    for (const name of ['spin-button', 'sound-toggle']) {
+      const box = (await page.getByTestId(name).boundingBox())!;
+      expect(box.height).toBeGreaterThanOrEqual(48);
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+    }
+    await controls.screenshot({ path: `test-screenshots/compact-controls-${state}-${info.project.name}.png` });
+  };
+  await checkSize('idle');
+  await page.getByTestId('spin-button').click();
+  await expect(page.getByTestId('spin-button')).toHaveText('Generating…');
+  await checkSize('loading');
+  release();
+  await expect(page.getByTestId('machine-state')).toHaveText('success');
+  await checkSize('success');
+});
 test('short pull resets; full pull starts exactly one spin', async ({ page }, info) => {
   let requests = 0;
   await page.route('**/api/idea', route => { requests++; return route.fulfill({ json: researched }); });
   await ready(page);
+  await page.getByTestId('lever').hover({ position: { x: 28, y: 30 } });
   const box = (await page.getByTestId('lever').boundingBox())!;
   const x = box.x + box.width / 2, y = box.y + 30;
   await page.mouse.move(x, y); await page.mouse.down(); await page.mouse.move(x, y + 40, { steps: 5 });
@@ -265,6 +357,7 @@ test('rolling audio mutes mid-spin, resumes, and stops on an error; short pulls 
     await route.fulfill({ status: 500, json: { error: 'Try again later.' } });
   });
   await ready(page);
+  await page.getByTestId('lever').hover({ position: { x: 28, y: 30 } });
   const box = (await page.getByTestId('lever').boundingBox())!;
   await page.mouse.move(box.x + 28, box.y + 30);
   await page.mouse.down();

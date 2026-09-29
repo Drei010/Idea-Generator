@@ -16,16 +16,18 @@ if (process.platform === 'darwin') {
   const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
   writeFileSync(firefoxExecutable, `#!/bin/sh\nexec ${quote(binary)} -app ${quote(ini)} "$@"\n`, { mode: 0o755 });
 }
+const port = process.env.EXPO_PORT || '8081';
+const baseURL = `http://localhost:${port}`;
 export default defineConfig({
   testDir: './tests/e2e', outputDir: 'test-results', timeout: 40_000,
   fullyParallel: false, workers: 2, retries: 0,
   reporter: [['list'], ['html', { open: 'never' }]],
-  use: { baseURL: 'http://localhost:8081', screenshot: 'only-on-failure', trace: 'retain-on-failure' },
+  use: { baseURL, screenshot: 'only-on-failure', trace: 'retain-on-failure' },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 1000 } } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'], launchOptions: { executablePath: firefoxExecutable }, viewport: { width: 1440, height: 1000 } } },
     { name: 'webkit', use: { ...devices['Desktop Safari'], viewport: { width: 1440, height: 1000 } } },
     { name: 'mobile', use: { ...devices['iPhone 13'], defaultBrowserType: 'webkit' } },
   ],
-  webServer: { command: 'CI=1 npx expo start --web --port 8081', url: 'http://localhost:8081', reuseExistingServer: true, timeout: 120_000 },
+  webServer: { command: `CI=1 npx expo start --web --port ${port}`, url: baseURL, reuseExistingServer: true, timeout: 120_000 },
 });
