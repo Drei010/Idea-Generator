@@ -5,6 +5,8 @@ import type { ReelName } from '../domain/categories';
 import { TextMesh } from './TextMesh';
 import { ReelEmblem } from './ReelEmblem';
 import { angleToIndex, easeOutQuint, getTargetRotation, indexToAngle, normalizeRotation, STEP } from './utils/reelMath';
+// Letter size every reel label uses; only the few longest words shrink below it to fit.
+const LABEL_SCALE = 0.45;
 export type ReelProps = { name: ReelName; labels: readonly string[]; x: number; targetIndex: number; spinId: number; spinning: boolean; waiting: boolean; duration: number; onStopped: (name: ReelName, index: number, spinId: number) => void };
 export function Reel({ name, labels, x, targetIndex, spinId, spinning, waiting, duration, onStopped }: ReelProps) {
   const group = useRef<Group>(null);
@@ -42,8 +44,8 @@ export function Reel({ name, labels, x, targetIndex, spinId, spinning, waiting, 
       return <group key={label} position={[0, radius * Math.sin(angle), radius * Math.cos(angle)]} rotation={[-angle, 0, 0]} name={`${name}-face-${index}`}>
         <mesh><planeGeometry args={[1.29, 2 * radius * Math.tan(STEP / 2)]} /><meshStandardMaterial color={name === 'domain' ? '#4b0714' : name === 'approach' ? '#06283c' : '#103b20'} roughness={0.3} /></mesh>
         <ReelEmblem name={name} label={label} />
-        <TextMesh raised wrap text={label.toUpperCase()} width={1.16} height={0.38} position={[0.012, -0.44, 0.012]} color="#160a04" />
-        <TextMesh raised wrap text={label.toUpperCase()} width={1.16} height={0.38} position={[0, -0.42, 0.04]} color="#ffe1a0" />
+        <TextMesh raised wrap text={label.toUpperCase()} width={1.16} height={0.38} maxScale={LABEL_SCALE} position={[0.012, -0.44, 0.012]} color="#160a04" />
+        <TextMesh raised wrap text={label.toUpperCase()} width={1.16} height={0.38} maxScale={LABEL_SCALE} position={[0, -0.42, 0.04]} color="#ffe1a0" />
         <mesh position={[0, -0.69, 0.008]}><planeGeometry args={[1.06, 0.009]} /><meshBasicMaterial color="#d59c3d" /></mesh>
       </group>;
     })}
