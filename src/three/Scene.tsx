@@ -7,7 +7,7 @@ import { useMemo } from 'react';
 import { Reel } from './Reel';
 import { TextMesh } from './TextMesh';
 import { categories, reelNames, type ReelFaces, type ReelIndexes, type ReelName } from '../domain/categories';
-export type SceneProps = { machineWidth?: number; indexes: ReelIndexes; faces: ReelFaces; spinId: number; spinning: boolean; waiting: boolean; celebrating: boolean; pull: number; reducedMotion: boolean; duration?: number; onStopped: (name: ReelName, index: number, spinId: number) => void; onReady: () => void; onLeverPosition: (position: { x: number; y: number }) => void };
+export type SceneProps = { machineWidth?: number; indexes: ReelIndexes; faces: ReelFaces; spinId: number; spinning: boolean; waiting: boolean; celebrating: boolean; pull: { readonly current: number }; reducedMotion: boolean; duration?: number; onStopped: (name: ReelName, index: number, spinId: number) => void; onReady: () => void; onLeverPosition: (position: { x: number; y: number }) => void };
 const possibilities = (categories.domain.length * categories.approach.length * categories.niche.length).toLocaleString('en-US');
 function Box({ size, position, color, metal = 0, radius = 0.06 }: { size: [number, number, number]; position: [number, number, number]; color: string; metal?: number; radius?: number }) {
   const geometry = useMemo(() => new RoundedBoxGeometry(...size, 3, radius), [size[0], size[1], size[2], radius]);
@@ -49,14 +49,24 @@ function Lamp({ position, active, reducedMotion, radius = 0.075, phase = 0 }: { 
   });
   return <mesh position={position}><sphereGeometry args={[radius, 20, 16]} /><meshStandardMaterial ref={material} color="#781c12" emissive="#ff9b32" roughness={0.18} metalness={0.15} /></mesh>;
 }
-function Lever({ pull, spinning, reducedMotion }: { pull: number; spinning: boolean; reducedMotion: boolean }) {
+// The pull is read from a ref every frame, so dragging never re-renders React.
+function Lever({ pull, spinning, reducedMotion }: { pull: { readonly current: number }; spinning: boolean; reducedMotion: boolean }) {
   const arm = useRef<Group>(null);
   const velocity = useRef(0);
   useFrame((_, delta) => {
     if (!arm.current) return;
-    if (pull > 0 || reducedMotion) {
-      arm.current.rotation.x = pull * 2.2;
+    const target = pull.current * 2.2;
+    if (reducedMotion) {
+      arm.current.rotation.x = target;
       velocity.current = 0;
+      return;
+    }
+    if (pull.current > 0) {
+      // Ease toward the pointer instead of jumping to it, and keep the arm's speed so a release flows into the spring.
+      const step = Math.min(delta, .1);
+      const before = arm.current.rotation.x;
+      arm.current.rotation.x += (target - before) * (1 - Math.exp(-step * 28));
+      velocity.current = step > 0 ? (arm.current.rotation.x - before) / step : 0;
       return;
     }
     // Small integration steps keep the spring stable after a slow frame or resume.

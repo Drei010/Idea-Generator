@@ -29,7 +29,7 @@ export default function SlotMachine() {
   const stopSound = useAudioPlayer(require('../../../assets/sounds/reel-stop.wav'));
   const winSound = useAudioPlayer(require('../../../assets/sounds/win-chime.wav'));
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [pull, setPull] = useState(0);
+  const pull = useRef(0);
   const [celebrating, setCelebrating] = useState(false);
   const [ready, setReady] = useState(false);
   const [leverPosition, setLeverPosition] = useState({ x: 0, y: 0 });
@@ -89,14 +89,14 @@ export default function SlotMachine() {
   const onPull = useCallback((progress: number) => {
     clearTimeout(leverReturn.current);
     leverAudio.pull(progress);
-    setPull(progress);
+    pull.current = progress;
   }, [leverAudio.pull]);
   const activate = useCallback(() => {
     if (!ready) return;
     leverAudio.throwLever();
     clearTimeout(leverReturn.current);
-    setPull(1);
-    leverReturn.current = setTimeout(() => setPull(0), reduceMotion ? 0 : 180);
+    pull.current = 1;
+    leverReturn.current = setTimeout(() => { pull.current = 0; }, reduceMotion ? 0 : 220);
     state.spin(); // The store ignores new spins while a generation is active.
   }, [ready, reduceMotion, state.spin, leverAudio.throwLever]);
   const status = !ready ? 'Loading the machine…' : state.status === 'spinning' ? 'Turning chance into an idea…' : state.status === 'generating' || state.status === 'settling' ? 'Turning chance into an idea…' : state.status === 'error' ? 'Your combination is saved.' : state.status === 'success' ? 'A fresh idea, just for this combination.' : 'Ready when you are.';
