@@ -10,8 +10,8 @@ export function updateSpinSound(
   player.setPlaybackRate(status === 'settling' ? .8 - stoppedReels * .15 : 1);
 }
 
-export function playSoundWhenReady(player: Pick<AudioPlayer, 'play' | 'seekTo'>, canPlay: () => boolean) {
+export function playSoundWhenReady(player: Pick<AudioPlayer, 'play' | 'seekTo'>, canPlay: () => boolean, at = 0) {
   try {
-    void player.seekTo(0).then(() => { if (canPlay()) player.play(); }).catch(() => {});
+    void player.seekTo(at).then(() => { if (canPlay()) player.play(); }).catch(() => {});
   } catch { /* Audio can be unavailable while the app is backgrounded. */ }
 }

@@ -9,6 +9,7 @@ import { categories, combinationFromIndexes, randomCategoryIndexes, randomIndexe
 import { generateIdea } from '../../services/ideaApi';
 import LeverControl from './LeverControl';
 import { playSoundWhenReady, updateSpinSound } from './spinSound';
+import { useLeverAudio } from './useLeverAudio';
 
 declare global { interface Window { __IDEA_TEST__?: { indexes?: ReelIndexes; categoryIndexes?: ReelIndexes; duration?: number } } }
 class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -24,8 +25,6 @@ export default function SlotMachine() {
   const test = useRef(__DEV__ && Platform.OS === 'web' && typeof window !== 'undefined' ? window.__IDEA_TEST__ : undefined).current;
   const [store] = useState(() => createSlotMachineStore(generateIdea, () => test?.indexes ?? randomIndexes(), () => test ? test.categoryIndexes ?? test.indexes ?? randomCategoryIndexes() : randomCategoryIndexes()));
   const state = useStore(store);
-  const leverSound = useAudioPlayer(require('../../../assets/sounds/lever-pull.wav'));
-  const creakSound = useAudioPlayer(require('../../../assets/sounds/lever-creak.wav'));
   const spinSound = useAudioPlayer(require('../../../assets/sounds/reel-spin.wav'));
   const stopSound = useAudioPlayer(require('../../../assets/sounds/reel-stop.wav'));
   const winSound = useAudioPlayer(require('../../../assets/sounds/win-chime.wav'));
@@ -38,9 +37,10 @@ export default function SlotMachine() {
   const [mounted, setMounted] = useState(false);
   const audioEnabled = useRef(soundEnabled);
   const componentActive = useRef(true);
-  const pulling = useRef(false);
   const leverReturn = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   audioEnabled.current = soundEnabled;
+  const canPlay = useCallback(() => componentActive.current && audioEnabled.current, []);
+  const leverAudio = useLeverAudio(soundEnabled, canPlay);
   useEffect(() => {
     componentActive.current = true;
     setMounted(true);
@@ -50,11 +50,11 @@ export default function SlotMachine() {
     return () => { componentActive.current = false; clearTimeout(leverReturn.current); subscription.remove(); };
   }, []);
   useEffect(() => {
-    for (const [player, volume] of [[leverSound, .32], [creakSound, .45], [stopSound, .5], [winSound, .55]] as const) {
+    for (const [player, volume] of [[stopSound, .5], [winSound, .55]] as const) {
       player.volume = soundEnabled ? volume : 0;
       if (!soundEnabled) player.pause();
     }
-  }, [soundEnabled, leverSound, creakSound, stopSound, winSound]);
+  }, [soundEnabled, stopSound, winSound]);
   const rolling = !reduceMotion && (state.status === 'spinning' || state.status === 'settling');
   useEffect(() => {
     spinSound.loop = true;
@@ -75,8 +75,8 @@ export default function SlotMachine() {
   const combination = combinationFromIndexes(state.reelIndexes, state.reelFaces);
   const playEffect = useCallback((player: AudioPlayer) => {
     if (!soundEnabled) return;
-    playSoundWhenReady(player, () => componentActive.current && audioEnabled.current);
-  }, [soundEnabled]);
+    playSoundWhenReady(player, canPlay);
+  }, [soundEnabled, canPlay]);
   const onReelStopped = useCallback((name: ReelName, index: number, spinId: number) => {
     const before = store.getState().stoppedReels.length;
     store.getState().reelStopped(name, index, spinId);
@@ -88,19 +88,17 @@ export default function SlotMachine() {
   }, [store, playEffect, stopSound, winSound]);
   const onPull = useCallback((progress: number) => {
     clearTimeout(leverReturn.current);
-    if (progress > 0 && !pulling.current) playEffect(creakSound);
-    pulling.current = progress > 0;
+    leverAudio.pull(progress);
     setPull(progress);
-  }, [playEffect, creakSound]);
+  }, [leverAudio.pull]);
   const activate = useCallback(() => {
     if (!ready) return;
-    if (!creakSound.playing) playEffect(creakSound);
-    playEffect(leverSound);
+    leverAudio.throwLever();
     clearTimeout(leverReturn.current);
     setPull(1);
     leverReturn.current = setTimeout(() => setPull(0), reduceMotion ? 0 : 180);
     state.spin(); // The store ignores new spins while a generation is active.
-  }, [ready, reduceMotion, state.spin, playEffect, leverSound, creakSound]);
+  }, [ready, reduceMotion, state.spin, leverAudio.throwLever]);
   const status = !ready ? 'Loading the machine…' : state.status === 'spinning' ? 'Turning chance into an idea…' : state.status === 'generating' || state.status === 'settling' ? 'Turning chance into an idea…' : state.status === 'error' ? 'Your combination is saved.' : state.status === 'success' ? 'A fresh idea, just for this combination.' : 'Ready when you are.';
   useEffect(() => { if (Platform.OS !== 'web' && ready) AccessibilityInfo.announceForAccessibility(status); }, [status, ready]);
   return <SafeAreaView style={s.safe}>
