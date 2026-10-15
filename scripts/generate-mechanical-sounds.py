@@ -35,3 +35,35 @@ def landing(t):
 write('reel-spin.wav', 2, rolling)
 write('lever-creak.wav', .65, creak)
 write('reel-stop.wav', .32, landing)
+
+def ratchet(t):
+    # One pawl tooth clicking over the gear as the lever passes a notch.
+    click = .5 * math.exp(-t * 260) * random.uniform(-1, 1)
+    tone = .32 * math.exp(-t * 140) * math.sin(2 * math.pi * 2300 * t)
+    return (click + tone) * min(1, t * 3000)
+
+def soft_thunk(t):
+    # A slow pull eases into the stop: low and muffled.
+    body = .42 * math.exp(-t * 22) * math.sin(2 * math.pi * 82 * t)
+    felt = .08 * math.exp(-t * 60) * random.uniform(-1, 1)
+    return (body + felt) * min(1, t * 400) * min(1, (.28 - t) * 80)
+
+def slam(t):
+    # A hard yank bangs the stop and leaves the cabinet ringing.
+    hit = .75 * math.exp(-t * 24) * math.sin(2 * math.pi * 64 * t)
+    crack = .45 * math.exp(-t * 70) * random.uniform(-1, 1)
+    ring = .2 * math.exp(-t * 9) * (math.sin(2 * math.pi * 620 * t) + .6 * math.sin(2 * math.pi * 1340 * t))
+    rattle = 0 if t < .09 else .18 * math.exp(-(t - .09) * 30) * math.sin(2 * math.pi * 23 * t) * random.uniform(-1, 1)
+    return (hit + crack + ring + rattle) * min(1, t * 3000) * min(1, (.6 - t) * 60)
+
+def spring(t):
+    # A partial pull let go: the return spring twangs the arm back to rest.
+    pitch = 2 * math.pi * (240 * t - 90 * t * t)
+    twang = .36 * math.exp(-t * 7) * math.sin(pitch) * (1 + .4 * math.sin(2 * math.pi * 11 * t))
+    knock = 0 if t < .16 else .3 * math.exp(-(t - .16) * 50) * math.sin(2 * math.pi * 130 * (t - .16))
+    return (twang + knock) * min(1, t * 1500) * min(1, (.45 - t) * 60)
+
+write('lever-ratchet.wav', .06, ratchet)
+write('lever-thunk-soft.wav', .28, soft_thunk)
+write('lever-slam.wav', .6, slam)
+write('lever-spring.wav', .45, spring)

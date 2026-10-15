@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { categories, combinationFromIndexes, randomCategoryIndexes, randomIndexes, reelFacesForSelection } from '../../src/domain/categories';
 import { angleToIndex, getTargetRotation, normalizeRotation, indexToAngle, wrapLabel, TAU, STEP } from '../../src/three/utils/reelMath';
 import { validateCombination } from '../../src/server/validation.server';
+import { medallions } from '../../src/three/utils/medallions';
 
 describe('canonical categories', () => {
   it('loads 46 unique values per reel and preserves canonical strings', () => {
@@ -47,4 +48,23 @@ describe('request validation', () => {
     for (const domain of categories.domain) for (const approach of categories.approach) for (const niche of categories.niche) expect(validateCombination({ domain, approach, niche })).toEqual({ domain, approach, niche });
   });
   it.each([null, 1, [], {}, { domain: 'Healthcare' }, { domain: 'Anything', approach: 'Automation', niche: 'Freelancers' }, { domain: 'Finance', approach: '', niche: 'Children' }, { domain: 'Finance', approach: 'Automation', niche: 5 }, { domain: 'Finance', approach: 'Automation', niche: 'Children', extra: true }])('rejects invalid body %j', body => expect(validateCombination(body)).toBeNull());
+});
+
+describe('reel artwork', () => {
+  it('has one measured medallion inside the artwork for every label', () => {
+    for (const name of ['domain', 'approach', 'niche'] as const) {
+      expect(medallions[name]).toHaveLength(categories[name].length);
+      for (const [x, y, rim] of medallions[name]) {
+        expect(rim).toBeGreaterThan(30); expect(rim).toBeLessThan(38);
+        expect(x - rim).toBeGreaterThan(0); expect(x + rim).toBeLessThan(1536);
+        expect(y - rim).toBeGreaterThan(0); expect(y + rim).toBeLessThan(1024);
+      }
+    }
+  });
+  it('puts multi-word labels longer than ten letters on two lines', () => {
+    expect(wrapLabel('Remote Workers')).toBe('Remote\nWorkers');
+    expect(wrapLabel('Job Seekers')).toBe('Job\nSeekers');
+    expect(wrapLabel('Open Data')).toBe('Open Data');
+    expect(wrapLabel('Telecommunications')).toBe('Telecommunications');
+  });
 });

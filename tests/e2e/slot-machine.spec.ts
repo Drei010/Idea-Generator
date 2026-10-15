@@ -380,3 +380,47 @@ test('rolling audio mutes mid-spin, resumes, and stops on an error; short pulls 
   expect(await page.evaluate(() => [...(window as any).__MECHANICAL_AUDIO__].some((audio: HTMLMediaElement) => audio.src.includes('win-chime')))).toBe(false);
   await screenshot(page, 'mechanical-error-stopped', info.project.name);
 });
+
+test('lever sounds follow the handle: partial pulls spring back, pull speed picks the stop', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'Drag speed is driven with a mouse.');
+  await page.addInitScript(() => {
+    (window as any).__LEVER_AUDIO__ = [] as string[];
+    const play = HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play = function () {
+      (window as any).__LEVER_AUDIO__.push(this.src.match(/(lever-[a-z-]+|reel-[a-z]+|win-chime)/)?.[0] ?? this.src);
+      return play.call(this);
+    };
+  });
+  await page.route('**/api/idea', route => route.fulfill({ json: researched }));
+  await ready(page);
+  const played = () => page.evaluate(() => (window as any).__LEVER_AUDIO__ as string[]);
+  const clear = () => page.evaluate(() => { (window as any).__LEVER_AUDIO__.length = 0; });
+  const lever = page.getByTestId('lever');
+  await lever.hover({ position: { x: 28, y: 30 } });
+  const box = (await lever.boundingBox())!;
+  const x = box.x + 28, y = box.y + 30;
+  const pull = async (distance: number, steps: number, pause = 0) => {
+    await page.mouse.move(x, y); await page.mouse.down();
+    for (let i = 1; i <= steps; i++) { await page.mouse.move(x, y + distance * i / steps); if (pause) await page.waitForTimeout(pause); }
+    await page.mouse.up();
+  };
+
+  await pull(40, 4);
+  await expect.poll(played).toContain('lever-spring');
+  expect(await played()).toContain('lever-creak');
+  for (const stop of ['lever-pull', 'lever-thunk-soft', 'lever-slam']) expect(await played()).not.toContain(stop);
+  await expect(page.getByTestId('machine-state')).toHaveText('idle');
+
+  await clear();
+  await pull(110, 12, 110);
+  await expect.poll(played).toContain('lever-thunk-soft');
+  expect((await played()).filter(name => name === 'lever-ratchet').length).toBeGreaterThan(0);
+  expect(await played()).not.toContain('lever-slam');
+  await expect(page.getByTestId('generated-idea')).toHaveText(idea);
+
+  await clear();
+  await pull(110, 1); // One pointer frame from rest to the stop is a yank.
+  await expect.poll(played).toContain('lever-slam');
+  expect(await played()).not.toContain('lever-spring');
+  await screenshot(page, 'lever-slam', info.project.name);
+});

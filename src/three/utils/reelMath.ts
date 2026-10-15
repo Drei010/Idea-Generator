@@ -13,7 +13,7 @@ export function getTargetRotation(currentRotation: number, targetIndex: number, 
 export const easeOutQuint = (t: number) => 1 - (1 - Math.min(1, Math.max(0, t))) ** 5;
 export function wrapLabel(label: string): string {
   if (!label.trim()) throw new Error('Label cannot be empty.');
-  if (label.length <= 14 || !label.includes(' ')) return label;
+  if (label.length <= 10 || !label.includes(' ')) return label;
   const words = label.split(' ');
   let split = 1;
   for (let i = 2; i < words.length; i++) {
